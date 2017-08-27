@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Heightmap Generator</title>
+    <link rel="stylesheet" href="styles.css" type="text/css" />
+    <script src="js/three.js"></script>
+    <script src="js/improvednoise.js"></script>
+    <script src="js/orbitcontrols.js"></script>
+    <script src="js/heightmap.js"></script>
+    <script src="js/heightgradient.js"></script>
+    <script src="js/watershader.js"></script>
+</head>
+
+<body>
+    <div id="heightMapContainer" class="heightMapContainer">
+        <div id="gradient" class="gradientContainer"></div>
+        <canvas id="heightMap" width=512 height=512></canvas>
+        <button onclick="recreateHeightMap()">Update</button>
+    </div>
+    <div id="renderContainer" class="renderContainer"></div>
+    <script>
+        var lastFrameTimestamp = null;
+        var clock = new THREE.Clock();
+        var scene = new THREE.Scene();
+        var container = document.getElementById('renderContainer');
+        var animateSun = false;
+        var sunTime = 0;
+        var waterLevel = 0;
+
+        var gradient = new HeightGradient();
+        document.getElementById('gradient').appendChild(gradient.getGradient());
+
+        //        var camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+        var camera = new THREE.OrthographicCamera(container.clientWidth / -2, container.clientWidth / 2, container.clientHeight / 2, container.clientHeight / -2, 0.001, 1000);
+
+        var controls = new THREE.OrbitControls(camera);
+        var renderer = new THREE.WebGLRenderer({ alpha: true });
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(renderer.domElement);
+
+        var heightMap = new HeightMap();
+        var heightModel = null;
+        var tex = new THREE.CanvasTexture(gradient.getGradient(), THREE.UVMapping);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        recreateHeightMap();
+
+        var planeGeo = new THREE.PlaneGeometry(1000, 1000, 1, 1);
+        var plane = new THREE.Mesh(planeGeo, new THREE.ShadowMaterial({ color: 0x333333 }));
+        plane.receiveShadow = true;
+        plane.rotation.x = -Math.PI / 2;
+        plane.position.set(0, -80, 0);
+        scene.add(plane);
+
+        var ambientLight = new THREE.AmbientLight(0x404040); // soft white light
+        scene.add(ambientLight);
+
+        var sunLight = new THREE.DirectionalLight(0xffffff, 1);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 512;  // default
+        sunLight.shadow.mapSize.height = 512; // default
+        sunLight.shadow.camera.near = 1;       // default
+        sunLight.shadow.camera.far = 1000;      // default        
+        sunLight.shadow.camera.left = -256;      // default        
+        sunLight.shadow.camera.right = 256;      // default        
+        sunLight.shadow.camera.top = -256;      // default        
+        sunLight.shadow.camera.bottom = 256;      // default      
+        sunLight.shadow.bias = -0.008;
+        sunLight.position.set(300, 500, 0);
+        sunLight.target.position.set(scene.position);
+        scene.add(sunLight);
+
+        var waterPlaneGeo = new THREE.PlaneGeometry(255, 255, 1, 1);
+        var waterPlane = new THREE.Mesh(waterPlaneGeo, new THREE.MeshStandardMaterial({ color: 0xa088fc, transparent: true, opacity: 0.5 }));
+        waterPlane.rotation.x = -Math.PI / 2;
+        waterPlane.position.set(0, waterLevel, 0);
+        scene.add(waterPlane);
+
+        /*        var helper = new THREE.CameraHelper(sunLight.shadow.camera);
+                scene.add(helper);*/
+
+        camera.position.set(-128, 100, 128);
+        camera.lookAt(scene.position);
+        camera.zoom = 1.5;
+        camera.updateProjectionMatrix();
+
+        var ms_Water = null;
+
+        var sL = sunLight.position.clone();
+        sL.negate();
+        sL.normalize();
+
+        var animate = function (timestamp) {
+            controls.update(clock.getDelta());
+            if (!lastFrameTimestamp) {
+                lastFrameTimestamp = timestamp - 16;
+            }
+            var elapsed = clock.getDelta();
+
+            var orbitRadius = 500;
+            var time = clock.getElapsedTime() / 4.0;
+            if (animateSun) {
+                sunLight.position.set(
+                    Math.cos(time) * orbitRadius,
+                    Math.sin(time) * orbitRadius,
+                    0
+                );
+            }
+
+            if (ms_Water != null) {
+                ms_Water.material.uniforms.time.value += elapsed;
+                ms_Water.render();
+            }
+            renderer.render(scene, camera);
+
+            lastFrameTimestamp = timestamp;
+
+            requestAnimationFrame(animate);
+        };
+
+        requestAnimationFrame(animate);
+
+        window.addEventListener('keydown', function (e) {
+            switch (e.code) {
+                case 'KeyS':
+                    animateSun = !animateSun;
+                    break;
+                case 'KeyO':
+                    waterPlane.position.y++;
+                    break;
+                case 'KeyL':
+                    waterPlane.position.y--;
+                    break;
+            }
+            /*            switch(e.keyCode) {
+                            case 107:
+                                sunLight.shadow.bias+=0.0001;
+                                console.log(sunLight.shadow.bias);
+                            break;
+                            case 109:
+                                sunLight.shadow.bias-=0.0001;
+                                console.log(sunLight.shadow.bias);
+                            break;
+                        }*/
+        });
+
+        function recreateHeightMap() {
+            if (heightModel != null) {
+                scene.remove(heightModel);
+            }
+            heightMap.createCanvasTexture(512, 'heightMap');
+            heightModel = new THREE.Mesh(heightMap.createMesh(), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, map: tex }));
+            heightModel.castShadow = true;
+            heightModel.receiveShadow = true;
+            scene.add(heightModel);
+        }
+
+        function addWaterPlane() {
+            new THREE.TextureLoader().load('assets/waternormals.jpg', (waterNormals) => {
+                waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping;
+                // Create the water effect
+                ms_Water = new THREE.Water(renderer, camera, scene, {
+                    textureWidth: 256,
+                    textureHeight: 256,
+                    waterNormals: tex,
+                    alpha: 0.6,
+                    sunDirection: sL,
+                    sunColor: 0xffffff,
+                    waterColor: 0xa088fc,
+                    betaVersion: 0,
+                    side: THREE.DoubleSide
+                });
+                var aMeshMirror = new THREE.Mesh(
+                    new THREE.PlaneBufferGeometry(255, 255, 10, 10),
+                    ms_Water.material
+                );
+                aMeshMirror.add(ms_Water);
+                aMeshMirror.rotation.x = Math.PI * 0.5;
+
+                scene.add(aMeshMirror);
+            });
+        }
+    </script>
+</body>
+
+</html>

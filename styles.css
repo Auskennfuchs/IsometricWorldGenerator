@@ -1,0 +1,43 @@
+* {
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+html {
+    width: 100%;
+    height: 100%;
+}
+
+body{
+    background-color:#303030;
+    width: 100%;
+    height: 100%;
+    padding: 1em;
+}
+
+canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.renderContainer {
+    display: inline-block;
+    width: 50%;
+    height:100%;
+    vertical-align: middle;
+    background: radial-gradient(#cbcdcc,#9099a0);
+}
+
+.heightMapContainer {
+    display: inline-block;
+    width: 512px;
+    height: 512px;
+    vertical-align: middle;
+}
+
+.gradientContainer {
+    display:inline-block;
+    width: 100%;
+    height:20px;
+}
